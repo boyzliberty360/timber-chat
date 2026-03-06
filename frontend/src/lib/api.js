@@ -14,4 +14,9 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+export const getCurrentUser = () => api.get("/api/users/me");
+export const getFriends = () => api.get("/api/friends");
+export const getOrCreateDirectRoom = (friendId) => api.get(`/api/friends/${friendId}/room`);
+export const getPendingRequestsCount = () => api.get("/api/friends/requests/count");
+
 export default api;

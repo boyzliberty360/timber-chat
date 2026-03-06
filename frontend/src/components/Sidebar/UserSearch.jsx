@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import api from "../../lib/api";
 
-export default function UserSearch({ onClose }) {
+export default function UserSearch({ onClose, onRequestSent }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [friendRequests, setFriendRequests] = useState([]);
@@ -44,6 +44,10 @@ export default function UserSearch({ onClose }) {
       setResults((prev) =>
         prev.map((u) => u.id === userId ? { ...u, friend_status: "pending" } : u)
       );
+      // Notify parent to refresh friends list
+      if (onRequestSent) {
+        onRequestSent();
+      }
     } catch (err) { console.error(err); }
   };
 

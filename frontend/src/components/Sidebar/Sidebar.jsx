@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useChatStore } from "../../store/chatStore";
 import { supabase } from "../../lib/supabase";
-import api from "../../lib/api";
+import api, { getOrCreateDirectRoom, getFriends } from "../../lib/api";
 import RoomItem from "./RoomItem";
 import UserSearch from "./UserSearch";
 
 export default function Sidebar({ session, send, isOpen, onClose }) {
-  const { rooms, activeRoom, setActiveRoom, addRoom } = useChatStore();
+  const { rooms, activeRoom, setActiveRoom, addRoom, friends, pendingReceived, pendingSent, pendingRequestsCount, setFriends, setRooms, setPendingRequestsCount } = useChatStore();
   const [showCreate, setShowCreate] = useState(false);
   const [showBrowse, setShowBrowse] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
@@ -70,9 +70,62 @@ export default function Sidebar({ session, send, isOpen, onClose }) {
     } catch (err) { console.error(err); }
   };
 
+  // Refresh friends list
+  const refreshFriends = async () => {
+    try {
+      const res = await getFriends();
+      setFriends(res.data || { friends: [], pending_received: [], pending_sent: [] });
+      const pendingReceived = res.data?.pending_received || [];
+      setPendingRequestsCount(pendingReceived.length);
+    } catch (err) { console.error(err); }
+  };
+
+  // Handle friend request acceptance
+  const handleFriendRequestRespond = async (requestId, approve) => {
+    try {
+      await api.post(`/api/users/friend-requests/${requestId}/respond`, { approve });
+      // Refresh friends list
+      await refreshFriends();
+      // If approved, also refresh rooms
+      if (approve) {
+        const roomsRes = await api.get("/api/rooms");
+        setRooms(roomsRes.data || []);
+      }
+    } catch (err) { console.error(err); }
+  };
+
   const groups = rooms.filter((r) => !r.is_private);
-  const privates = rooms.filter((r) => r.is_private);
   const myRoomIds = new Set(rooms.map((r) => r.id));
+
+  // Handle clicking on a friend to start direct message
+  const handleFriendClick = async (friend) => {
+    try {
+      // If there's already a room, use it
+      if (friend.room_id) {
+        const room = rooms.find(r => r.id === friend.room_id);
+        if (room) {
+          setActiveRoom(room);
+          return;
+        }
+      }
+      // Otherwise create/get a direct room
+      const res = await getOrCreateDirectRoom(friend.id);
+      const roomId = res.data.room_id;
+      
+      // Refresh rooms to get the new one
+      const roomsRes = await api.get("/api/rooms");
+      const { setRooms } = useChatStore.getState();
+      setRooms(roomsRes.data || []);
+      
+      // Find and set the new room as active
+      const newRoom = roomsRes.data?.find(r => r.id === roomId);
+      if (newRoom) {
+        setActiveRoom(newRoom);
+      }
+    } catch (err) {
+      console.error("Failed to start direct message:", err);
+    }
+  };
 
   return (
 <aside className={`sidebar glass-panel ${isOpen ? "sidebar-open" : ""}`}>
@@ -84,6 +137,12 @@ export default function Sidebar({ session, send, isOpen, onClose }) {
         <span className="sidebar-logo">🪵</span>
         <h1 className="sidebar-title">Timber</h1>
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          {pendingRequestsCount > 0 && (
+            <button className="notif-btn" onClick={() => setShowUserSearch(true)} title="Friend requests">
+              👥
+              <span className="notif-badge">{pendingRequestsCount}</span>
+            </button>
+          )}
           {joinRequests.length > 0 && (
             <button className="notif-btn" onClick={() => setShowRequests(true)} title="Join requests">
               🔔
@@ -123,12 +182,80 @@ export default function Sidebar({ session, send, isOpen, onClose }) {
 
       <div className="sidebar-section">
         <div className="section-header">
-          <span className="section-label">🔒 Private</span>
-          <button className="add-btn" onClick={() => { setIsPrivate(true); setShowCreate(true); }}>+</button>
+          <span className="section-label">👥 Friends</span>
         </div>
-        {privates.map((room) => (
-          <RoomItem key={room.id} room={room} active={activeRoom?.id === room.id} onClick={() => setActiveRoom(room)} />
-        ))}
+        
+        {/* Pending Requests Received */}
+        {pendingReceived.length > 0 && (
+          <div style={{ padding: "4px 8px" }}>
+            <p style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Pending Requests
+            </p>
+            {pendingReceived.map((req) => (
+              <div key={req.id} className="browse-item" style={{ padding: "8px" }}>
+                <div className="avatar-wrap">
+                  <div className="avatar avatar-sm">{req.username[0]?.toUpperCase()}</div>
+                  <div className={`presence-dot ${req.is_online ? 'online' : 'offline'}`} />
+                </div>
+                <span style={{ flex: 1, color: "var(--text-primary)", fontSize: "14px" }}>{req.username}</span>
+                <div style={{ display: "flex", gap: "4px" }}>
+                  <button 
+                    className="btn-wood" 
+                    style={{ padding: "4px 8px", fontSize: "11px" }}
+                    onClick={() => handleFriendRequestRespond(req.request_id, true)}
+                  >✓</button>
+                  <button 
+                    className="btn-ghost" 
+                    style={{ padding: "4px 8px", fontSize: "11px" }}
+                    onClick={() => handleFriendRequestRespond(req.request_id, false)}
+                  >✗</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Friends List */}
+        {friends.length === 0 && pendingReceived.length === 0 && pendingSent.length === 0 ? (
+          <p style={{ color: "var(--text-muted)", fontSize: "13px", padding: "8px 12px" }}>
+            No friends yet. Find people to add!
+          </p>
+        ) : (
+          <>
+            {friends.map((friend) => (
+              <button
+                key={friend.id}
+                className={`room-item ${activeRoom?.id === friend.room_id ? 'room-item--active' : ''}`}
+                onClick={() => handleFriendClick(friend)}
+              >
+                <div className="avatar-wrap">
+                  <div className="avatar avatar-sm">{friend.username[0]?.toUpperCase()}</div>
+                  <div className={`presence-dot ${friend.is_online ? 'online' : 'offline'}`} />
+                </div>
+                <span className="room-name">{friend.username}</span>
+              </button>
+            ))}
+          </>
+        )}
+
+        {/* Pending Sent */}
+        {pendingSent.length > 0 && (
+          <div style={{ padding: "8px" }}>
+            <p style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Sent Requests
+            </p>
+            {pendingSent.map((req) => (
+              <div key={req.id} className="room-item" style={{ opacity: 0.7 }}>
+                <div className="avatar-wrap">
+                  <div className="avatar avatar-sm">{req.username[0]?.toUpperCase()}</div>
+                  <div className={`presence-dot ${req.is_online ? 'online' : 'offline'}`} />
+                </div>
+                <span className="room-name">{req.username}</span>
+                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>⏳</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Create Room Modal */}
@@ -225,7 +352,7 @@ export default function Sidebar({ session, send, isOpen, onClose }) {
       )}
 
       {/* User Search Modal */}
-      {showUserSearch && <UserSearch onClose={() => setShowUserSearch(false)} />}
+      {showUserSearch && <UserSearch onClose={() => setShowUserSearch(false)} onRequestSent={refreshFriends} />}
 
     </aside>
   );

@@ -7,6 +7,11 @@ export const useChatStore = create((set, get) => ({
   typingUsers: {},
   onlineUsers: new Set(),
   readReceipts: {},
+  currentUser: null,
+  friends: [],
+  pendingReceived: [],
+  pendingSent: [],
+  pendingRequestsCount: 0,
 
   setRooms: (rooms) => set({ rooms }),
   setActiveRoom: (room) => set({ activeRoom: room }),
@@ -44,4 +49,12 @@ export const useChatStore = create((set, get) => ({
         [messageId]: [...(s.readReceipts[messageId] || []), userId],
       },
     })),
+
+  setCurrentUser: (user) => set({ currentUser: user }),
+  setFriends: (friends) => set({ 
+    friends: friends.friends || [],
+    pendingReceived: friends.pending_received || [],
+    pendingSent: friends.pending_sent || [],
+  }),
+  setPendingRequestsCount: (count) => set({ pendingRequestsCount: count }),
 }));

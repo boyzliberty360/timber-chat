@@ -3,18 +3,21 @@ import { useChatStore } from "../../store/chatStore";
 import api from "../../lib/api";
 
 export default function MessageInput({ session, send }) {
-  const { activeRoom } = useChatStore();
+  const { activeRoom, currentUser } = useChatStore();
   const [text, setText] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
   const typingTimer = useRef(null);
   const isTyping = useRef(false);
 
+  // Use username from currentUser profile, fallback to email
+  const username = currentUser?.username || session.user.email;
+
   const handleTyping = (val) => {
     setText(val);
     if (!isTyping.current) {
       isTyping.current = true;
-      send("typing.start", { room_id: activeRoom.id, user_id: session.user.id, username: session.user.email });
+      send("typing.start", { room_id: activeRoom.id, user_id: session.user.id, username: username });
     }
     clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(() => {

@@ -3,15 +3,44 @@ import { useChatStore } from "../../store/chatStore";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import Sidebar from "../Sidebar/Sidebar";
 import ChatWindow from "./ChatWindow";
-import api from "../../lib/api";
+import api, { getCurrentUser, getFriends, getPendingRequestsCount } from "../../lib/api";
 
 export default function ChatApp({ session }) {
-  const { setRooms, activeRoom } = useChatStore();
+  const { setRooms, activeRoom, setCurrentUser, setFriends, setPendingRequestsCount } = useChatStore();
   const { send } = useWebSocket(session, activeRoom);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     api.get("/api/rooms").then((res) => setRooms(res.data || []));
+  }, []);
+
+  // Fetch user profile to get username
+  useEffect(() => {
+    getCurrentUser().then((res) => {
+      if (res.data) {
+        setCurrentUser(res.data);
+      }
+    }).catch(console.error);
+  }, []);
+
+  // Fetch friends list with pending requests
+  useEffect(() => {
+    getFriends().then((res) => {
+      setFriends(res.data || { friends: [], pending_received: [], pending_sent: [] });
+      // Update pending count
+      const pendingReceived = res.data?.pending_received || [];
+      setPendingRequestsCount(pendingReceived.length);
+    }).catch(console.error);
+  }, []);
+
+  // Refresh pending count periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      getPendingRequestsCount().then((res) => {
+        setPendingRequestsCount(res.data?.count || 0);
+      }).catch(console.error);
+    }, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   // Close sidebar when a room is selected on mobile
