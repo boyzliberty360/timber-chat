@@ -41,6 +41,7 @@ func main() {
 	// Protected API routes
 	api := app.Group("/api", handlers.AuthMiddleware)
 	api.Get("/rooms", handlers.GetRooms)
+	api.Post("/rooms", handlers.CreateRoom)
 	api.Get("/rooms/browse", handlers.BrowseRooms)
 	api.Get("/rooms/requests", handlers.GetJoinRequests)
 	api.Post("/rooms/:id/request-join", handlers.RequestJoin)
