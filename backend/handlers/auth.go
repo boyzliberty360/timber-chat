@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -29,13 +30,19 @@ func AuthMiddleware(c *fiber.Ctx) error {
 	req.Header.Set("apikey", serviceKey)
 
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil {
+		log.Printf("Supabase auth request failed: %v", err)
+		return c.Status(401).JSON(fiber.Map{"error": "Invalid token"})
+	}
+	if resp.StatusCode != 200 {
+		log.Printf("Supabase returned status: %d for URL: %s", resp.StatusCode, supabaseURL)
 		return c.Status(401).JSON(fiber.Map{"error": "Invalid token"})
 	}
 	defer resp.Body.Close()
 
 	var user supabaseUser
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil || user.ID == "" {
+		log.Printf("Failed to decode user: %v", err)
 		return c.Status(401).JSON(fiber.Map{"error": "Invalid user"})
 	}
 
